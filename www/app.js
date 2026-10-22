@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var U = window.DS;
-  var VERSION = '0.1.2';
+  var VERSION = '0.2.2';
 
   /* ---------- tiny helpers ---------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -45,7 +45,7 @@
   var fired = LS.get('ds.fired', {});
   var today = function () { return U.ymd(new Date()); };
   var ui = {
-    weekStart: U.mondayOf(new Date()), selDay: null, month: U.ym(new Date()), todoFilter: 'all',
+    weekStart: U.mondayOf(new Date()), selDay: null, calMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1), month: U.ym(new Date()), todoFilter: 'all',
     draft: { kind: 'spend', desc: '', amount: '', cat: '', catManual: false },
     g: { name: '', qty: '' }, reveal: false
   };
@@ -146,7 +146,7 @@
     var hero;
     if (next) {
       hero = '<section class="hero"><div class="col"><span class="lab">NEXT EVENT</span><span class="big" style="font-size:24px">' + esc(next.e.title) +
-        '</span><span class="soft">' + U.dayLabel(next.e.date) + (next.e.time ? ' · ' + esc(next.e.time) : '') + '</span></div>' +
+        '</span><span class="soft">' + U.dayLabel(next.e.date) + (next.e.time ? ' · ' + esc(next.e.time) : '') + ' · for ' + esc(next.e.owner || 'Both') + '</span></div>' +
         '<div class="col r"><span class="big" style="font-size:44px">' + U.countdown(next.s.getTime() - nowMs) + '</span><span class="soft" style="font-size:12px">until the event</span></div></section>';
     } else {
       hero = '<section class="hero"><div class="col"><span class="lab">NEXT EVENT</span><span class="big" style="font-size:24px">Nothing planned</span>' +
@@ -171,17 +171,39 @@
       shown = evs.filter(function (x) { return x.s >= start; }).slice(0, 30);
       heading = 'Upcoming';
     }
+    var thisYear = new Date().getFullYear();
     var cards = shown.map(function (x) {
       var e = x.e, d = x.s;
       return '<button class="row ev" data-act="ev-edit" data-id="' + e.id + '"><div class="date"><b>' + d.getDate() + '</b><span>' + U.DOW[d.getDay()].toUpperCase() +
-        '</span></div><div class="grow"><span class="t">' + esc(e.title) + (e.time ? ' · ' + esc(e.time) : '') + '</span>' +
+        '</span><span class="mo">' + U.MON[d.getMonth()] + (d.getFullYear() !== thisYear ? ' ' + d.getFullYear() : '') + '</span></div><div class="grow"><span class="t">' + esc(e.title) + (e.time ? ' · ' + esc(e.time) : '') + ' <span class="chip tag">' + esc(e.owner || 'Both') + '</span></span>' +
         (e.detail ? '<span class="sub">' + esc(e.detail) + '</span>' : '') +
         (e.remark ? '<span class="rem">Remark: ' + esc(e.remark) + '</span>' : '') + '</div></button>';
     }).join('') || '<div class="empty card">' + (ui.selDay ? 'Nothing on this day.' : 'No upcoming events yet.') + '</div>';
-    return '<div class="title-row"><h1>Calendar</h1><button class="btn" data-act="ev-add">+ Add event</button></div>' + hero +
-      '<div class="week-head"><button class="icon-btn sm" data-act="week-prev" aria-label="Previous week">' + IC.left + '</button><span class="lbl">' + wlabel +
-      '</span><button class="icon-btn sm" data-act="week-next" aria-label="Next week">' + IC.right + '</button></div><section class="week" aria-label="Week">' + days + '</section>' +
-      '<h2 class="sec">' + heading + '</h2><section class="stack">' + cards + '</section>';
+    var more = (!ui.selDay && evs.filter(function (x) { return x.s >= new Date(new Date().setHours(0, 0, 0, 0)); }).length > 30) ? '<p class="note-s">Showing the next 30 events. Pick a date to see others.</p>' : '';
+    // month grid (wide screens) and jump-to-date (phones) so any date up to 2030 and beyond is one tap away
+    var cm = ui.calMonth, first = new Date(cm.getFullYear(), cm.getMonth(), 1), gridStart = U.addDays(first, -((first.getDay() + 6) % 7));
+    var mcells = '';
+    ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach(function (n) { mcells += '<span class="mdow">' + n + '</span>'; });
+    for (var k = 0; k < 42; k++) {
+      var md = U.addDays(gridStart, k), mds = U.ymd(md);
+      var dayEvs = evs.filter(function (x) { return x.e.date === mds; });
+      mcells += '<button class="mday' + (md.getMonth() !== cm.getMonth() ? ' out' : '') + (mds === td ? ' today' : '') + (ui.selDay === mds ? ' sel' : '') +
+        '" data-act="day-sel" data-v="' + mds + '" aria-label="' + U.dayLabel(mds) + (dayEvs.length ? ', ' + dayEvs.length + ' events' : '') + '"><span class="n">' + md.getDate() + '</span>' +
+        dayEvs.slice(0, 2).map(function (x) { return '<span class="mev">' + esc(x.e.title) + '</span>'; }).join('') +
+        (dayEvs.length > 2 ? '<span class="mev more">+' + (dayEvs.length - 2) + ' more</span>' : '') + '</button>';
+    }
+    var yFrom = Math.min(thisYear - 1, cm.getFullYear()), yTo = Math.max(2035, cm.getFullYear()), ysel = '';
+    for (var y = yFrom; y <= yTo; y++) ysel += '<option value="' + y + '"' + (y === cm.getFullYear() ? ' selected' : '') + '>' + y + '</option>';
+    var msel = U.MONFULL.map(function (n, i) { return '<option value="' + i + '"' + (i === cm.getMonth() ? ' selected' : '') + '>' + n + '</option>'; }).join('');
+    var monthCard = '<section class="month card" aria-label="Month"><div class="month-head"><button class="icon-btn sm" data-act="cal-prev" aria-label="Previous month">' + IC.left + '</button>' +
+      '<select class="in sm" data-chg="cal-month" aria-label="Month">' + msel + '</select><select class="in sm" data-chg="cal-year" aria-label="Year">' + ysel + '</select>' +
+      '<button class="icon-btn sm" data-act="cal-next" aria-label="Next month">' + IC.right + '</button><button class="btn ghost sm" data-act="cal-today">Today</button></div>' +
+      '<div class="mgrid">' + mcells + '</div></section>';
+    var jump = '<label class="jump"><span>Go to date</span><input class="in sm" type="date" data-chg="jump" value="' + (ui.selDay || td) + '"></label>';
+    return '<div class="title-row"><h1>Calendar</h1><button class="btn" data-act="ev-add">+ Add event</button></div><div class="cal-grid">' + hero +
+      '<div class="picker"><div class="week-wrap"><div class="week-head"><button class="icon-btn sm" data-act="week-prev" aria-label="Previous week">' + IC.left + '</button><span class="lbl">' + wlabel +
+      '</span><button class="icon-btn sm" data-act="week-next" aria-label="Next week">' + IC.right + '</button></div><section class="week" aria-label="Week">' + days + '</section>' + jump + '</div>' + monthCard + '</div>' +
+      '<div class="cal-list"><h2 class="sec">' + heading + '</h2><section class="stack">' + cards + '</section>' + more + '</div></div>';
   }
 
   function groceryNames() {
@@ -297,7 +319,14 @@
   var TABS = [['calendar', 'Calendar', IC.cal], ['groceries', 'Groceries', IC.cart], ['money', 'Money', IC.wallet], ['todo', 'To-do', IC.list]];
   function shellHtml() {
     return '<div class="shell"><header class="top"><button class="brand" id="brandBtn" data-act="menu" aria-haspopup="true" aria-expanded="false" aria-label="DS Family menu">' +
-      '<span class="logo">DS</span><span class="brand-name">DS Family</span><span class="caret">' + IC.caret + '</span></button><div class="status" id="status"></div></header>' +
+      '<span class="logo">DS</span><span class="brand-name">DS Family</span><span class="caret">' + IC.caret + '</span></button>' +
+      '<nav class="topnav" aria-label="Main">' + TABS.map(function (t) {
+        return '<button data-act="tab" data-v="' + t[0] + '" class="' + (prefs.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>';
+      }).join('') + '</nav>' +
+      '<div class="topright"><div class="tdots" role="group" aria-label="Theme">' + THEMES.map(function (t) {
+        return '<button class="tdot' + (prefs.theme === t.id ? ' on' : '') + '" data-act="theme-set" data-v="' + t.id + '" title="' + t.name + '" aria-label="' + t.name + ' theme" aria-pressed="' + (prefs.theme === t.id) + '" style="background:' + t.primary + '"></button>';
+      }).join('') + '</div><button class="tbtn" data-act="open-settings" title="Settings" aria-label="Settings">' + IC.sliders + '<span>Settings</span></button>' +
+      '<button class="tbtn" data-act="open-about" title="About" aria-label="About">' + IC.info + '<span>About</span></button><div class="status" id="status"></div></div></header>' +
       '<div class="scrim" id="scrim" data-act="menu-close"></div>' +
       '<div class="menu" id="menu" role="menu"><button role="menuitem" data-act="open-theme">' + IC.palette + 'Theme</button>' +
       '<button role="menuitem" data-act="open-settings">' + IC.sliders + 'Settings</button><button role="menuitem" data-act="open-about">' + IC.info + 'About</button></div>' +
@@ -312,7 +341,8 @@
     var scroll = m.scrollTop;
     m.innerHTML = prefs.tab === 'groceries' ? viewGroceries() : prefs.tab === 'money' ? viewMoney() : prefs.tab === 'todo' ? viewTodo() : viewCalendar();
     m.scrollTop = scroll;
-    Array.prototype.forEach.call(document.querySelectorAll('nav.tabs button'), function (b) {
+    m.className = 'tab-' + prefs.tab;
+    Array.prototype.forEach.call(document.querySelectorAll('nav.tabs button, nav.topnav button'), function (b) {
       b.className = b.getAttribute('data-v') === prefs.tab ? 'on' : '';
     });
     if (prefs.tab === 'groceries') updateGrocerySug();
@@ -340,6 +370,12 @@
     s.innerHTML = '<div class="overlay" data-act="sheet-bg"><div class="sheet" role="dialog" aria-modal="true">' + html + '</div></div>';
   }
   function closeSheet() { var s = $('#sheet'); if (s) s.innerHTML = ''; }
+  function markThemeDots() {
+    Array.prototype.forEach.call(document.querySelectorAll('.tdot'), function (b) {
+      var on = b.getAttribute('data-v') === prefs.theme;
+      b.className = 'tdot' + (on ? ' on' : ''); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
   function sheetOpen() { var s = $('#sheet'); return !!(s && s.innerHTML); }
   function fld(id, label, input) { return '<div class="field"><label for="' + id + '">' + label + '</label>' + input + '</div>'; }
   function inp(id, type, val, extra) { return '<input id="' + id + '" class="in" type="' + type + '" value="' + esc(val || '') + '" ' + (extra || '') + '>'; }
@@ -397,12 +433,27 @@
       '<div class="actions"><button class="btn ghost" data-act="sheet-close">Cancel</button><button class="btn" data-act="settings-save">Save</button></div>');
   }
 
+  // new events start on the day you picked, else on the month or week you are looking at, else today
+  function newEventDate() {
+    if (ui.selDay) return ui.selDay;
+    var now = new Date();
+    if (window.matchMedia && window.matchMedia('(min-width:900px)').matches) {
+      var cm = ui.calMonth;
+      if (cm.getFullYear() !== now.getFullYear() || cm.getMonth() !== now.getMonth()) return U.ymd(cm);
+    } else {
+      var we = U.addDays(ui.weekStart, 6), t = U.ymd(now);
+      if (t < U.ymd(ui.weekStart) || t > U.ymd(we)) return U.ymd(ui.weekStart);
+    }
+    return today();
+  }
   function openEvent(id) {
-    var e = id ? items[id] : { date: ui.selDay || today(), time: '', title: '', detail: '', remark: '', remind: 60 };
+    var e = id ? items[id] : { date: newEventDate(), time: '', title: '', detail: '', remark: '', remind: 60, owner: 'Both' };
+    var owners = [[myName(), myName()]]; if (profile.partner) owners.push([profile.partner, profile.partner]); owners.push(['Both', 'Both']);
     openSheet('<h2>' + (id ? 'Edit event' : 'New event') + '</h2>' + fld('f-title', 'Title', inp('f-title', 'text', e.title, 'autocomplete="off"')) +
       '<div class="grid2">' + fld('f-date', 'Date', inp('f-date', 'date', e.date)) + fld('f-time', 'Time', inp('f-time', 'time', e.time)) + '</div>' +
       fld('f-detail', 'Detail', inp('f-detail', 'text', e.detail, 'autocomplete="off"')) + fld('f-remark', 'Remark', inp('f-remark', 'text', e.remark, 'autocomplete="off"')) +
-      fld('f-remind', 'Remind me', '<select id="f-remind" class="in">' + opts([[0, 'No reminder'], [30, '30 minutes before'], [60, '1 hour before'], [180, '3 hours before'], [1440, '1 day before']], e.remind) + '</select>') +
+      '<div class="grid2">' + fld('f-owner', 'For', '<select id="f-owner" class="in">' + opts(owners, e.owner || 'Both') + '</select>') +
+      fld('f-remind', 'Remind me', '<select id="f-remind" class="in">' + opts([[0, 'No reminder'], [30, '30 minutes before'], [60, '1 hour before'], [180, '3 hours before'], [1440, '1 day before']], e.remind) + '</select>') + '</div>' +
       '<div class="actions' + (id ? ' three' : '') + '"><button class="btn ghost" data-act="sheet-close">Cancel</button>' + (id ? '<button class="btn danger" data-act="f-delete" data-id="' + id + '">Delete</button>' : '') +
       '<button class="btn" data-act="f-save" data-type="event" data-id="' + (id || '') + '">Save</button></div>');
   }
@@ -437,7 +488,7 @@
     var base = id ? Object.assign({}, items[id]) : { id: U.uid(), type: type };
     if (type === 'event') {
       var title = val('f-title').trim(); if (!title || !val('f-date')) return false;
-      Object.assign(base, { title: title, date: val('f-date'), time: val('f-time'), detail: val('f-detail').trim(), remark: val('f-remark').trim(), remind: +val('f-remind') || 0, by: base.by || myName() });
+      Object.assign(base, { title: title, date: val('f-date'), time: val('f-time'), detail: val('f-detail').trim(), remark: val('f-remark').trim(), remind: +val('f-remind') || 0, owner: val('f-owner') || 'Both', by: base.by || myName() });
     } else if (type === 'todo') {
       var tt = val('f-title').trim(); if (!tt) return false;
       var follow = document.getElementById('f-follow').checked;
@@ -545,7 +596,7 @@
       case 'open-theme': setMenu(false); openThemeSheet(); break;
       case 'open-settings': setMenu(false); openSettingsSheet(); break;
       case 'open-about': setMenu(false); openAboutSheet(); break;
-      case 'theme-set': prefs.theme = v; savePrefs(); applyTheme(); openThemeSheet(); break;
+      case 'theme-set': prefs.theme = v; savePrefs(); applyTheme(); if (sheetOpen()) openThemeSheet(); markThemeDots(); break;
       case 'update-check': updateCheck(el); break;
       case 'sheet-close': closeSheet(); break;
       case 'sheet-bg': if (ev.target === el) closeSheet(); break;
@@ -556,7 +607,10 @@
       case 'ev-edit': openEvent(id); break;
       case 'week-prev': ui.weekStart = U.addDays(ui.weekStart, -7); renderMain(); break;
       case 'week-next': ui.weekStart = U.addDays(ui.weekStart, 7); renderMain(); break;
-      case 'day-sel': ui.selDay = ui.selDay === v ? null : v; renderMain(); break;
+      case 'day-sel': ui.selDay = ui.selDay === v ? null : v; if (ui.selDay) { var sd = U.parseYmd(ui.selDay); ui.weekStart = U.mondayOf(sd); ui.calMonth = new Date(sd.getFullYear(), sd.getMonth(), 1); } renderMain(); break;
+      case 'cal-prev': ui.calMonth = new Date(ui.calMonth.getFullYear(), ui.calMonth.getMonth() - 1, 1); renderMain(); break;
+      case 'cal-next': ui.calMonth = new Date(ui.calMonth.getFullYear(), ui.calMonth.getMonth() + 1, 1); renderMain(); break;
+      case 'cal-today': ui.selDay = null; ui.weekStart = U.mondayOf(new Date()); ui.calMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1); renderMain(); break;
 
       case 'g-add': {
         var name = ui.g.name.trim(); if (!name) break;
@@ -646,7 +700,15 @@
     }
   });
   document.addEventListener('change', function (ev) {
-    var el = ev.target, k = el.getAttribute && el.getAttribute('data-in');
+    var el = ev.target, c = el.getAttribute && el.getAttribute('data-chg');
+    if (c === 'cal-month') { ui.calMonth = new Date(ui.calMonth.getFullYear(), +el.value, 1); renderMain(); return; }
+    if (c === 'cal-year') { ui.calMonth = new Date(+el.value, ui.calMonth.getMonth(), 1); renderMain(); return; }
+    if (c === 'jump') {
+      var jd = U.parseYmd(el.value);
+      if (jd) { ui.selDay = el.value; ui.weekStart = U.mondayOf(jd); ui.calMonth = new Date(jd.getFullYear(), jd.getMonth(), 1); renderMain(); }
+      return;
+    }
+    var k = el.getAttribute && el.getAttribute('data-in');
     if (!k) return;
     if (k === 'm-cat') { ui.draft.cat = el.value; ui.draft.catManual = !!el.value; updateMoneySug(false); }
     else if (k === 'g-price') {
