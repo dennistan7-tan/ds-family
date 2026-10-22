@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var U = window.DS;
-  var VERSION = '0.1.1';
+  var VERSION = '0.1.2';
 
   /* ---------- tiny helpers ---------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -356,8 +356,32 @@
     var s = sync.mode === 'local' ? 'Local only' : (sync.ready && navigator.onLine && !sync.error ? 'Online' : 'Offline');
     openSheet('<h2>About</h2><div><div class="kv"><span>App</span><span>DS Family</span></div><div class="kv"><span>Version</span><span>v' + VERSION + '</span></div>' +
       '<div class="kv"><span>Sync</span><span>' + s + '</span></div></div>' +
+      '<p class="note" id="upd-msg">Tap the button to check for a newer version.</p>' +
+      '<div class="actions"><button class="btn" id="upd-btn" data-act="update-check" style="grid-column:1/-1">Check for update</button></div>' +
       '<p class="note">Install it like an app: on iPhone open this page in Safari, tap Share, then Add to Home Screen. On Android open it in Chrome, tap the menu, then Install app.</p>' +
       '<div class="actions"><button class="btn ghost" data-act="sheet-close" style="grid-column:1/-1">Close</button></div>');
+  }
+  function newer(a, b) {                       // is version a newer than b
+    var x = String(a).split('.'), y = String(b).split('.');
+    for (var i = 0; i < 3; i++) { var d = (+x[i] || 0) - (+y[i] || 0); if (d) return d > 0; }
+    return false;
+  }
+  function applyUpdate() {                      // drop cached copies and reload to get the new files
+    var done = function () { location.reload(); };
+    var clear = (window.caches && caches.keys) ? caches.keys().then(function (k) { return Promise.all(k.map(function (n) { return caches.delete(n); })); }) : Promise.resolve();
+    var unreg = (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) ? navigator.serviceWorker.getRegistrations().then(function (r) { return Promise.all(r.map(function (x) { return x.unregister(); })); }) : Promise.resolve();
+    Promise.all([clear, unreg]).then(done, done);   // your data stays: it lives in storage, not in the cache
+  }
+  function updateCheck(btn) {
+    var msg = $('#upd-msg');
+    if (btn.getAttribute('data-ready')) { msg.textContent = 'Updating...'; applyUpdate(); return; }
+    msg.textContent = 'Checking...';
+    fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+      if (newer(j.version, VERSION)) {
+        msg.textContent = 'Version v' + j.version + ' is available' + (j.notes ? ': ' + j.notes : '') + '.';
+        btn.textContent = 'Update now'; btn.setAttribute('data-ready', '1');
+      } else { msg.textContent = 'You have the latest version (v' + VERSION + ').'; }
+    }).catch(function () { msg.textContent = 'Could not check. Connect to the internet and try again.'; });
   }
   function notifState() {
     if (typeof Notification === 'undefined') return 'Not supported on this browser';
@@ -522,6 +546,7 @@
       case 'open-settings': setMenu(false); openSettingsSheet(); break;
       case 'open-about': setMenu(false); openAboutSheet(); break;
       case 'theme-set': prefs.theme = v; savePrefs(); applyTheme(); openThemeSheet(); break;
+      case 'update-check': updateCheck(el); break;
       case 'sheet-close': closeSheet(); break;
       case 'sheet-bg': if (ev.target === el) closeSheet(); break;
       case 'toast-close': $('#toast').className = 'toast'; break;

@@ -1,5 +1,5 @@
 /* DS Family service worker: keeps the app opening offline and shows reminder notifications. */
-var CACHE = 'ds-family-v0.1.1';
+var CACHE = 'ds-family-v0.2.0';
 var SHELL = ['./', 'index.html', 'styles.css', 'util.js', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'];
 
@@ -17,6 +17,7 @@ self.addEventListener('fetch', function (e) {
   var url = new URL(req.url);
   var sameOrigin = url.origin === self.location.origin;
   var cdn = /(^|\.)(fonts\.googleapis\.com|fonts\.gstatic\.com|www\.gstatic\.com)$/.test(url.hostname);
+  if (/version\.json$/.test(url.pathname)) return;     // always ask the server for the latest version number
   if (!sameOrigin && !cdn) return;                       // never touch Firestore traffic
   e.respondWith(caches.open(CACHE).then(function (cache) {
     return cache.match(req).then(function (hit) {
