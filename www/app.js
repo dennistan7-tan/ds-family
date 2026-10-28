@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var U = window.DS;
-  var VERSION = '0.2.3';
+  var VERSION = '0.2.4';
 
   /* ---------- tiny helpers ---------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -473,6 +473,24 @@
       '<div class="actions three"><button class="btn ghost" data-act="sheet-close">Cancel</button><button class="btn danger" data-act="f-delete" data-id="' + id + '">Delete</button>' +
       '<button class="btn" data-act="f-save" data-type="grocery" data-id="' + id + '">Save</button></div>');
   }
+  // read-only detail of a money entry: every item with its price and the total
+  function openEntryDetail(id) {
+    var e = items[id]; if (!e) return;
+    var inc = e.kind === 'income';
+    var lines = (e.lines && e.lines.length) ? e.lines : [{ n: e.desc, p: e.amount }];
+    var rows = lines.map(function (l, i) {
+      return '<div class="kv"><span>' + (e.lines && e.lines.length ? (i + 1) + '. ' : '') + esc(l.n) + '</span><span>' + mm(l.p) + '</span></div>';
+    }).join('');
+    openSheet('<h2>' + esc(e.desc) + '</h2>' +
+      '<div><div class="kv"><span>Type</span><span>' + (inc ? 'Income' : 'Spending') + '</span></div>' +
+      '<div class="kv"><span>Category</span><span>' + esc(e.cat || 'Other') + '</span></div>' +
+      '<div class="kv"><span>Date</span><span>' + U.dayLabel(e.date) + ' ' + esc((e.date || '').slice(0, 4)) + '</span></div>' +
+      '<div class="kv"><span>Added by</span><span>' + esc(e.by || '') + '</span></div></div>' +
+      '<h2 class="sec">' + (e.lines && e.lines.length ? 'Items (' + lines.length + ')' : 'Details') + '</h2><div class="lines">' + rows +
+      '<div class="kv total"><span>Total</span><span>' + mm(e.amount) + '</span></div></div>' +
+      '<div class="actions three"><button class="btn ghost" data-act="m-detail-reveal" data-id="' + id + '">' + (ui.reveal ? 'Hide amounts' : 'Show amounts') + '</button>' +
+      '<button class="btn ghost" data-act="m-detail-edit" data-id="' + id + '">Edit</button><button class="btn" data-act="sheet-close">Close</button></div>');
+  }
   function openEntry(id) {
     var e = items[id];
     openSheet('<h2>Edit entry</h2>' + fld('f-kind', 'Type', '<select id="f-kind" class="in" data-in="f-kind">' + opts([['spend', 'Spending'], ['income', 'Income']], e.kind) + '</select>') +
@@ -642,7 +660,9 @@
         put({ id: U.uid(), type: 'entry', kind: d.kind, desc: d.desc.trim() || cat, amount: amt, cat: cat, date: today(), by: myName() }, true);
         ui.draft = { kind: d.kind, desc: '', amount: '', cat: '', catManual: false }; ui.month = U.ym(new Date()); renderMain(); break;
       }
-      case 'm-edit': openEntry(id); break;
+      case 'm-edit': openEntryDetail(id); break;
+      case 'm-detail-edit': openEntry(id); break;
+      case 'm-detail-reveal': ui.reveal = !ui.reveal; renderMain(); openEntryDetail(id); break;
       case 'm-prev': case 'm-next': {
         var p = ui.month.split('-'), dt = new Date(+p[0], +p[1] - 1 + (act === 'm-next' ? 1 : -1), 1); ui.month = U.ym(dt); renderMain(); break;
       }
