@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var U = window.DS;
-  var VERSION = '0.2.4';
+  var VERSION = '0.3.0';
 
   /* ---------- tiny helpers ---------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -51,7 +51,7 @@
   };
   var sync = { mode: 'local', ready: false, error: false, col: null };
 
-  function saveLocal() { LS.set('ds.items', items); }
+  function saveLocal() { LS.set('ds.items', items); queueNative(); }
   function savePrefs() { LS.set('ds.prefs', prefs); }
   function list(type) {
     return Object.keys(items).map(function (k) { return items[k]; })
@@ -107,7 +107,7 @@
         snap.forEach(function (d) { remote[d.id] = d.data(); });
         Object.keys(remote).forEach(function (id) {
           var r = remote[id], l = items[id];
-          if (!l || (r.u || 0) > (l.u || 0)) { items[id] = r; changed = true; }
+          if (!l || (r.u || 0) > (l.u || 0)) { items[id] = r; changed = true; if (sync.ready) partnerNote(r, !l); }
         });
         if (!sync.ready) {                                   // first load: send anything newer we hold locally
           sync.col = col; sync.ready = true;
@@ -420,6 +420,7 @@
     }).catch(function () { msg.textContent = 'Could not check. Connect to the internet and try again.'; });
   }
   function notifState() {
+    if (hasNative()) { try { return window.DSAndroid.permState() === 'granted' ? 'Allowed' : 'Not allowed yet'; } catch (e) { return 'Not allowed yet'; } }
     if (typeof Notification === 'undefined') return 'Not supported on this browser';
     return Notification.permission === 'granted' ? 'Allowed' : Notification.permission === 'denied' ? 'Blocked in browser settings' : 'Not allowed yet';
   }
@@ -562,7 +563,43 @@
     t.innerHTML = '<div class="m"><b>' + esc(r.title) + '</b>' + esc(r.body) + '</div><button data-act="toast-close">OK</button>';
     t.className = 'toast show';
   }
+  /* ---------- Android bridge: reminders keep working when the app is closed ---------- */
+  var nativeTimer = 0;
+  function hasNative() { return !!(window.DSAndroid && window.DSAndroid.setReminders); }
+  function queueNative() {
+    if (!hasNative() || !profile) return;
+    clearTimeout(nativeTimer);
+    nativeTimer = setTimeout(syncNative, 600);
+  }
+  function syncNative() {
+    if (!hasNative() || !profile) return;
+    var now = Date.now();
+    var arr = dueReminders().filter(function (r) { return r.at > now - 60000 && !fired[r.key]; })
+      .sort(function (a, b) { return a.at - b.at; }).slice(0, 150)
+      .map(function (r) { return { key: r.key, at: r.at, title: r.title, body: r.body }; });
+    try { window.DSAndroid.setReminders(JSON.stringify(arr)); } catch (e) { /* bridge not ready */ }
+  }
+  function partnerNote(r, isNew) {                          // tells you when your partner adds or changes something
+    if (!r || !r.by || r.by === myName() || r.del || !hasNative() && !(typeof Notification !== 'undefined' && Notification.permission === 'granted')) return;
+    var what = r.type === 'event' ? 'event' : r.type === 'todo' ? 'task' : r.type === 'entry' ? (r.kind === 'income' ? 'income' : 'spending') : r.type === 'grocery' ? 'grocery item' : '';
+    if (!what || !isNew) return;
+    var title = r.by + ' added ' + (/^[aeiou]/.test(what) ? 'an ' : 'a ') + what;
+    var text = r.title || r.desc || r.name || '';
+    pushNote({ key: 'p:' + r.id + ':' + (r.u || 0), title: title, body: text });
+  }
+  function pushNote(r) {
+    if (fired[r.key]) return;
+    fired[r.key] = Date.now(); LS.set('ds.fired', fired);
+    if (hasNative()) { try { window.DSAndroid.notifyNow(r.title, r.body, r.key); } catch (e) { } return; }
+    showBanner(r);
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && navigator.serviceWorker) {
+        navigator.serviceWorker.ready.then(function (reg) { reg.showNotification(r.title, { body: r.body, icon: 'icons/icon-192.png', tag: r.key }); });
+      }
+    } catch (e) { /* notification not available */ }
+  }
   function notify(r) {
+    if (hasNative()) { try { window.DSAndroid.notifyNow(r.title, r.body, r.key); } catch (e) { } showBanner(r); return; }
     showBanner(r);
     try {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -685,6 +722,7 @@
         try { navigator.clipboard.writeText(profile.code); el.textContent = 'Copied'; } catch (e) { var c = $('#s-code'); c.select(); }
         break;
       case 'enable-notif':
+        if (hasNative()) { try { window.DSAndroid.requestPermission(); } catch (e) { } setTimeout(openSettingsSheet, 1500); break; }
         if (typeof Notification !== 'undefined') { Notification.requestPermission().then(function () { openSettingsSheet(); }); }
         break;
       case 'leave':
@@ -747,6 +785,7 @@
   render();
   initSync();
   checkReminders();
+  syncNative();
   setInterval(function () {
     checkReminders();
     if (profile && prefs.tab === 'calendar' && !sheetOpen() && !document.hidden) renderMain();
