@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var U = window.DS;
-  var VERSION = '0.3.0';
+  var VERSION = '0.3.1';
 
   /* ---------- tiny helpers ---------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -431,6 +431,7 @@
       fld('s-code', 'Login code', '<div class="codebox"><input id="s-code" class="in" type="password" readonly value="' + esc(profile.code) + '"><button class="btn ghost" data-act="copy-code">Copy</button></div>') +
       '<div class="kv"><span>Reminders</span><span>' + notifState() + '</span></div>' +
       '<div class="actions"><button class="btn ghost" data-act="enable-notif">Allow notifications</button><button class="btn danger" data-act="leave">Leave family</button></div>' +
+      '<div class="actions"><button class="btn ghost" data-act="test-notif">Send a test notification</button></div>' +
       '<div class="actions"><button class="btn ghost" data-act="sheet-close">Cancel</button><button class="btn" data-act="settings-save">Save</button></div>');
   }
 
@@ -578,6 +579,10 @@
       .sort(function (a, b) { return a.at - b.at; }).slice(0, 150)
       .map(function (r) { return { key: r.key, at: r.at, title: r.title, body: r.body }; });
     try { window.DSAndroid.setReminders(JSON.stringify(arr)); } catch (e) { /* bridge not ready */ }
+    try {                                                   // lets the phone check for your partner's changes while the app is closed
+      var fb = window.DS_CONFIG && window.DS_CONFIG.firebase;
+      if (fb && fb.projectId && window.DSAndroid.setFamily) window.DSAndroid.setFamily(JSON.stringify({ code: profile.code, project: fb.projectId, key: fb.apiKey, me: myName() }));
+    } catch (e) { /* older app build */ }
   }
   function partnerNote(r, isNew) {                          // tells you when your partner adds or changes something
     if (!r || !r.by || r.by === myName() || r.del || !hasNative() && !(typeof Notification !== 'undefined' && Notification.permission === 'granted')) return;
@@ -720,6 +725,9 @@
       }
       case 'copy-code':
         try { navigator.clipboard.writeText(profile.code); el.textContent = 'Copied'; } catch (e) { var c = $('#s-code'); c.select(); }
+        break;
+      case 'test-notif':
+        notify({ key: 'test:' + Date.now(), title: 'DS Family', body: 'Notifications are working on this phone.' });
         break;
       case 'enable-notif':
         if (hasNative()) { try { window.DSAndroid.requestPermission(); } catch (e) { } setTimeout(openSettingsSheet, 1500); break; }

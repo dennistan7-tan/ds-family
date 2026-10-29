@@ -1,5 +1,5 @@
 /* DS Family service worker: keeps the app opening offline and shows reminder notifications. */
-var CACHE = 'ds-family-v0.3.0';
+var CACHE = 'ds-family-v0.3.1';
 var SHELL = ['./', 'index.html', 'styles.css', 'util.js', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'];
 
