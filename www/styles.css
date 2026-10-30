@@ -325,3 +325,7 @@ nav.tabs{grid-template-columns:repeat(5,minmax(0,1fr))}
 .wk-set{height:48px;border-radius:12px;border:2px solid var(--primary);background:var(--card);color:var(--primary);font-size:16px;font-weight:700}
 .wk-set.on{background:var(--primary);color:var(--on-primary)}
 .note{margin:0;font-size:13px;color:var(--muted);line-height:1.45}
+
+.wk-fig{border-radius:16px;overflow:hidden;border:1px solid var(--line);margin:10px 0 4px;background:var(--bg)}
+.wk-fig svg{display:block;width:100%;height:auto;max-height:240px}
+.wk-cap{text-align:center;font-weight:700;color:var(--primary);min-height:22px;margin-bottom:6px}

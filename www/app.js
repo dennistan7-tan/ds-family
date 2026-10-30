@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var U = window.DS;
-  var VERSION = '0.4.0';
+  var VERSION = '0.4.1';
 
   /* ---------- tiny helpers ---------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -405,8 +405,8 @@
     } else if (d.code === 'C' || d.code === 'D') {
       var c = W.circuit(wk);
       rows = '<div class="sec-row"><h2 class="sec">Circuit</h2><span class="s soft-s">' + c.rounds + ' rounds · ' + c.on + ' s on, ' + c.off + ' s off</span></div><section class="stack">' + W.stations[d.code].map(function (m, i) {
-        return '<div class="row"><span class="wk-n">' + (i + 1) + '</span><span class="grow"><span class="t">' + esc(m.name) + '</span><span class="s">' + esc(m.cue) + '</span></span></div>';
-      }).join('') + '</section>';
+        return '<button class="row" data-act="wk-station" data-v="' + d.code + ':' + i + '"><span class="wk-n">' + (i + 1) + '</span><span class="grow"><span class="t">' + esc(m.name) + '</span><span class="s">' + esc(m.cue) + '</span></span><span class="s">Watch</span></button>';
+      }).join('') + '</section><p class="note">Tap a station to see the move.</p>';
     } else if (d.code === 'S' || d.code === 'R') {
       var blocks = d.code === 'S' ? W.saturday(wk) : W.recovery;
       rows = '<h2 class="sec">' + (d.code === 'S' ? 'Saturday plan' : 'Recovery plan') + '</h2><section class="stack">' + blocks.map(function (m) {
@@ -448,17 +448,28 @@
     return '<section class="seg">' + sw('him', 'Him') + sw('her', 'Her') + '</section>' + cards +
       '<p class="note">Test both days at the same time, with the same loads and the same sofa or table height. On Nov 30 the difference shows next to each Nov 1 result.</p>';
   }
+  function wkFig(name) { return window.DSFig && DSFig.keyFor(name) ? '<div class="wk-fig" id="wk-fig"></div><div class="wk-cap" id="wk-cap"></div>' : ''; }
+  function wkPlay(name) { if (window.DSFig && DSFig.keyFor(name)) DSFig.play('#wk-fig', '#wk-cap', DSFig.keyFor(name)); }
+  function wkStationSheet(code, idx) {
+    var sts = W.stations[code], m = sts && sts[idx]; if (!m) { closeSheet(); return; }
+    var c = W.circuit(Math.min(Math.max(W.day(wkDate()).week, 1), 4));
+    openSheet('<span class="lab" style="color:var(--primary);font-size:12px;font-weight:700;letter-spacing:.1em">STATION ' + (idx + 1) + ' OF ' + sts.length + '</span><h2>' + esc(m.name) + '</h2>' + wkFig(m.name) +
+      '<div class="wk-dose">' + c.on + ' s on · ' + c.off + ' s off</div><p class="note">' + esc(m.cue) + '</p>' +
+      '<div class="actions"><button class="btn ghost" data-act="sheet-close">Close</button>' + (idx + 1 < sts.length ? '<button class="btn" data-act="wk-station" data-v="' + code + ':' + (idx + 1) + '">Next station</button>' : '') + '</div>');
+    wkPlay(m.name);
+  }
   function wkMoveSheet(code, idx) {
     var d = W.day(wkDate()), moves = W.moves[code], m = moves[idx]; if (!m) { closeSheet(); return; }
     var wk = Math.min(Math.max(d.week, 1), 4), key = d.date + ':' + code + ':' + idx, sets = ui.sp.sets[key] || (ui.sp.sets[key] = []), n = W.sets(wk);
     var setBtns = ''; for (var i = 0; i < n; i++) setBtns += '<button class="wk-set' + (sets[i] ? ' on' : '') + '" data-act="wk-set" data-v="' + key + '|' + i + '|' + code + ':' + idx + '">Set ' + (i + 1) + '</button>';
     var nextAct = idx + 1 < moves.length ? '<button class="btn" data-act="wk-move" data-v="' + code + ':' + (idx + 1) + '">Next move</button>' : '<button class="btn" data-act="wk-warm" data-v="cool">Cool-down</button>';
-    openSheet('<span class="lab" style="color:var(--primary);font-size:12px;font-weight:700;letter-spacing:.1em">MOVE ' + (idx + 1) + ' OF ' + moves.length + '</span><h2>' + esc(m.name) + '</h2>' +
+    openSheet('<span class="lab" style="color:var(--primary);font-size:12px;font-weight:700;letter-spacing:.1em">MOVE ' + (idx + 1) + ' OF ' + moves.length + '</span><h2>' + esc(m.name) + '</h2>' + wkFig(m.name) +
       '<div class="wk-dose">' + W.dose(m, wk) + '</div><div class="s" style="color:var(--muted)">' + esc(m.unit) + '</div>' +
       '<div class="grid2"><div class="wk-stat card"><span class="lab" style="color:var(--him)">HIM</span><span>' + esc(m.him) + '</span></div><div class="wk-stat card"><span class="lab" style="color:var(--her)">HER</span><span>' + esc(m.her) + '</span></div></div>' +
       '<h2 class="sec">How</h2><ol class="wk-steps">' + m.steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol><p class="note">Why: ' + esc(m.why) + '</p>' +
       '<h2 class="sec">Sets</h2><div class="wk-sets">' + setBtns + '</div><button class="btn light" id="wk-rest" data-act="wk-rest" data-v="' + W.rest(wk) + '">Start ' + W.rest(wk) + ' s rest</button>' +
       '<div class="actions"><button class="btn ghost" data-act="sheet-close">Close</button>' + nextAct + '</div>');
+    wkPlay(m.name);
   }
   function wkListSheet(kind) {
     var d = W.day(wkDate()), cool = kind === 'cool', arr = cool ? W.cooldown : W.warmup;
@@ -834,6 +845,7 @@
         wr[v] = !wr[v]; wr.by = myName(); put(wr); queueNative(); break;
       }
       case 'wk-warm': wkListSheet(v === 'cool' ? 'cool' : 'warm'); break;
+      case 'wk-station': { var sp2 = v.split(':'); wkStationSheet(sp2[0], +sp2[1]); break; }
       case 'wk-move': { var mp = v.split(':'); wkMoveSheet(mp[0], +mp[1]); break; }
       case 'wk-set': { var sp = v.split('|'), arr = ui.sp.sets[sp[0]] || (ui.sp.sets[sp[0]] = []); arr[+sp[1]] = !arr[+sp[1]]; var cp = sp[2].split(':'); wkMoveSheet(cp[0], +cp[1]); break; }
       case 'wk-rest': ui.sp.restEnd = Date.now() + (+v) * 1000; wkTick(); break;
