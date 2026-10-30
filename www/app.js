@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var U = window.DS;
-  var VERSION = '0.3.2';
+  var VERSION = '0.4.0';
 
   /* ---------- tiny helpers ---------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -23,6 +23,10 @@
     cart: svg('<path d="M3 4h2l2.5 11h10L20 8H6"/><circle cx="9" cy="19" r="1.5"/><circle cx="17" cy="19" r="1.5"/>'),
     wallet: svg('<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1"/>'),
     list: svg('<path d="M4 6l2 2 3-3M4 14l2 2 3-3M12 7h8M12 15h8"/>'),
+    star: svg('<path d="M12 3l2.6 6 6.4.6-5 4.4 1.6 6.5L12 17l-5.6 3.5L8 14 3 9.6 9.4 9z"/>'),
+    check: svg('<path d="M7 12.5l3.2 3.2L17 9"/>'),
+    bell: svg('<path d="M6 17h12l-1.5-2v-4a4.5 4.5 0 0 0-9 0v4zM10 20h4"/>'),
+    lock: svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
     palette: svg('<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r=".8"/><circle cx="10" cy="7.5" r=".8"/><circle cx="14.5" cy="7.5" r=".8"/>'),
     sliders: svg('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>'),
     info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/>'),
@@ -315,8 +319,165 @@
       '<section class="stack">' + cards + '</section>';
   }
 
+  /* ---------- Special: Workout Plan (November 2026) ---------- */
+  var W = window.DSW;
+  ui.sp = { view: 'list', tab: 'today', date: null, who: 'him', sets: {}, restEnd: 0 };
+  function fmt12(t) { var m = /^(\d{1,2}):(\d{2})/.exec(t || ''); if (!m) return ''; var h = +m[1]; return ((h % 12) || 12) + ':' + m[2] + ' ' + (h >= 12 ? 'PM' : 'AM'); }
+  function wkClamp() { var t = today(); return t < W.START ? W.START : t > W.END ? W.END : t; }
+  function wkDate() { return ui.sp.date || wkClamp(); }
+  function wkIs(date, who) { var r = items['wk-' + date]; return !!(r && !r.del && r[who]); }
+  function wkLabel(d) { return d.code + ' · ' + d.name; }
+  function wkStats(who) {
+    var t = today(), due = t < W.START ? [] : W.days().filter(function (d) { return d.code !== 'X' && d.date <= (t > W.END ? W.END : t); });
+    var done = due.filter(function (d) { return wkIs(d.date, who); }).length, streak = 0;
+    for (var i = due.length - 1; i >= 0; i--) {
+      if (wkIs(due[i].date, who)) streak++;
+      else if (due[i].date === t) continue;
+      else break;
+    }
+    return { done: done, due: due.length, streak: streak };
+  }
+  function wkNext() {
+    var now = Date.now(), all = W.days();
+    for (var i = 0; i < all.length; i++) {
+      var d = all[i];
+      if (d.code === 'X') continue;
+      var at = U.localDate(d.date, d.time).getTime();
+      if (at > now) return { d: d, at: at };
+    }
+    return null;
+  }
+  function wkWhen(d) {
+    var t = today(), tm = U.ymd(U.addDays(new Date(), 1));
+    return (d.date === t ? 'Today' : d.date === tm ? 'Tomorrow' : U.dayLabel(d.date)) + ' · ' + fmt12(d.time);
+  }
+  function wkReminders() {
+    var out = [];
+    if (prefs.wkRemind === false || !W) return out;
+    W.days().forEach(function (d) {
+      if (d.code === 'X' || !d.time || (wkIs(d.date, 'him') && wkIs(d.date, 'her'))) return;
+      out.push({ key: 'w:' + d.date + ':' + d.time, at: U.localDate(d.date, d.time).getTime(), title: 'Workout time', body: wkLabel(d) });
+    });
+    return out;
+  }
+  function tickBtn(who, on, label, date) {
+    var c = who === 'him' ? 'var(--him)' : 'var(--her)';
+    return '<button class="wk-tick" data-act="wk-done" data-v="' + who + '" data-id="' + date + '" aria-pressed="' + on + '" style="border-color:' + c + ';' + (on ? 'background:' + c + ';color:#fff' : 'color:' + c) + '">' +
+      '<span class="wk-circ" style="border-color:' + (on ? '#fff' : c) + '">' + (on ? IC.check : '') + '</span>' + label + '</button>';
+  }
+  function viewSpecialList() {
+    var t = today(), n = t < W.START ? 0 : t > W.END ? 30 : +t.slice(8, 10), nx = wkNext(), hs = wkStats('him'), rs = wkStats('her');
+    var nextHtml = nx ? '<div class="wk-next"><div class="grow"><span class="lab">NEXT SESSION</span><span class="v">' + wkWhen(nx.d) + '</span><span class="s">' + esc(wkLabel(nx.d)) + (nx.d.mins ? ' · ' + nx.d.mins + ' min' : '') + '</span></div>' +
+      '<span class="pill">in ' + U.countdown(nx.at - Date.now()) + '</span></div>' : '<div class="wk-next"><div class="grow"><span class="v">Program finished</span></div></div>';
+    return '<div class="title-row"><h1>Special</h1></div><p class="note" style="margin-top:-6px">Programs you do together</p>' +
+      '<button class="card wk-card" data-act="sp-open"><div class="wk-top"><div class="grow"><span class="lab">NOV 2026</span><span class="ttl">Workout Plan</span><span class="s">Strength and stamina for two</span></div><span class="chev">' + IC.right + '</span></div>' +
+      '<div class="wk-prog"><div class="wk-prog-h"><b>' + (n ? 'Day ' + n + ' of 30' : 'Starts 1 Nov') + '</b><span>' + Math.round(n / 30 * 100) + '%</span></div><div class="bar"><i style="width:' + Math.round(n / 30 * 100) + '%"></i></div></div>' +
+      nextHtml +
+      '<div class="grid2"><div class="wk-stat"><span class="lab" style="color:var(--him)">HIM</span><b>' + hs.done + ' / ' + hs.due + '</b><span class="s">sessions done</span></div>' +
+      '<div class="wk-stat"><span class="lab" style="color:var(--her)">HER</span><b>' + rs.done + ' / ' + rs.due + '</b><span class="s">sessions done</span></div></div></button>';
+  }
+  function viewSpecial() { return ui.sp.view === 'wk' ? viewWorkout() : viewSpecialList(); }
+  function viewWorkout() {
+    var d = W.day(wkDate()), tab = ui.sp.tab;
+    var sub = tab === 'today' ? U.dayLabel(d.date) + ' · ' + (d.week > 0 && d.week < 5 ? 'Week ' + d.week + ' · ' : '') + d.phase : tab === 'cal' ? 'November 2026 · 30 days' : 'Test days: Nov 1 and Nov 30';
+    function sb(id, label) { return '<button data-act="sp-tab" data-v="' + id + '" class="' + (tab === id ? 'on' : '') + '">' + label + '</button>'; }
+    return '<button class="wk-back" data-act="sp-back">' + IC.left + 'Special</button>' +
+      '<div class="title-row"><h1>Workout Plan</h1></div><p class="note" style="margin-top:-6px">' + sub + '</p>' +
+      '<section class="seg s3" aria-label="Workout views">' + sb('today', 'Today') + sb('cal', 'Calendar') + sb('tests', 'Tests') + '</section>' +
+      (tab === 'today' ? wkToday(d) : tab === 'cal' ? wkCalendar() : wkTests());
+  }
+  function wkToday(d) {
+    var t = today(), isToday = d.date === t, at = d.time ? U.localDate(d.date, d.time).getTime() : 0, now = Date.now(), rows = '';
+    var letter = d.code === 'X' ? '–' : d.code;
+    var starts = d.code === 'X' ? 'Rest day. Walk if you like.' : at > now ? 'Starts in <b>' + U.countdown(at - now) + '</b>' : isToday ? 'Time to start' : '';
+    var cta = d.code === 'T' ? '<button class="btn light" data-act="sp-tab" data-v="tests">Open tests</button>' : d.code === 'X' ? '' : '<button class="btn light" data-act="wk-warm" data-v="start">Start session</button>';
+    var hero = '<section class="hero wk-hero"><div class="wk-letter">' + letter + '</div><div class="col"><span class="lab">' + (isToday ? 'TODAY' : U.dayLabel(d.date).toUpperCase()) + '</span><span class="big" style="font-size:26px">' + esc(d.name) + '</span>' +
+      '<span class="soft">' + (d.time ? fmt12(d.time) + ' · ' + d.mins + ' min' : 'No session') + '</span></div></section>' +
+      '<div class="wk-start"><span>' + starts + '</span>' + cta + '</div>';
+    var done = d.code === 'X' ? '' : '<h2 class="sec">Mark done</h2><section class="grid2">' + tickBtn('him', wkIs(d.date, 'him'), 'Him', d.date) + tickBtn('her', wkIs(d.date, 'her'), 'Her', d.date) + '</section>';
+    var rem = '<div class="card wk-rem"><span class="ic">' + IC.bell + '</span><div class="grow"><b>Reminder ' + fmt12('19:45') + '</b><span class="s">Mon to Sat · Sat at 3:00 PM</span></div>' +
+      '<button class="wk-sw' + (prefs.wkRemind === false ? '' : ' on') + '" data-act="wk-remind" role="switch" aria-checked="' + (prefs.wkRemind !== false) + '" aria-label="Workout reminders"><i></i></button></div>';
+    var wk = Math.min(Math.max(d.week, 1), 4);
+    if (d.code === 'A' || d.code === 'B') {
+      rows = '<div class="sec-row"><h2 class="sec">Today\'s moves</h2><span class="s soft-s">Rest ' + W.rest(wk) + ' s between sets</span></div><section class="stack">' + W.moves[d.code].map(function (m, i) {
+        return '<button class="row" data-act="wk-move" data-v="' + d.code + ':' + i + '"><span class="wk-n">' + (i + 1) + '</span><span class="grow"><span class="t">' + esc(m.name) + '</span></span><b>' + W.dose(m, wk) + '</b></button>';
+      }).join('') + '</section>';
+    } else if (d.code === 'C' || d.code === 'D') {
+      var c = W.circuit(wk);
+      rows = '<div class="sec-row"><h2 class="sec">Circuit</h2><span class="s soft-s">' + c.rounds + ' rounds · ' + c.on + ' s on, ' + c.off + ' s off</span></div><section class="stack">' + W.stations[d.code].map(function (m, i) {
+        return '<div class="row"><span class="wk-n">' + (i + 1) + '</span><span class="grow"><span class="t">' + esc(m.name) + '</span><span class="s">' + esc(m.cue) + '</span></span></div>';
+      }).join('') + '</section>';
+    } else if (d.code === 'S' || d.code === 'R') {
+      var blocks = d.code === 'S' ? W.saturday(wk) : W.recovery;
+      rows = '<h2 class="sec">' + (d.code === 'S' ? 'Saturday plan' : 'Recovery plan') + '</h2><section class="stack">' + blocks.map(function (m) {
+        return '<div class="row"><span class="wk-n" style="width:auto;font-size:13px">' + esc(m.at) + '</span><span class="grow"><span class="t">' + esc(m.name) + ' · ' + esc(m.len) + '</span><span class="s">' + esc(m.cue) + '</span></span></div>';
+      }).join('') + '</section>';
+    } else if (d.code === 'T') {
+      rows = '<div class="card pad"><p class="note">Test day: do all four tests, then log the results in the Tests tab. Use the same time of day, loads and sofa or table height on both test days.</p></div>';
+    } else {
+      rows = '<div class="card pad"><p class="note">No session today. Rest and drink water.</p></div>';
+    }
+    return hero + done + rem + rows;
+  }
+  function wkCalendar() {
+    var t = today(), cells = '', lead = (new Date(2026, 10, 1).getDay() + 6) % 7, i;
+    for (i = 0; i < lead; i++) cells += '<span class="wk-cell blank"></span>';
+    W.days().forEach(function (d) {
+      var rest = d.code === 'X', h = wkIs(d.date, 'him'), r = wkIs(d.date, 'her'), past = d.date < t || (d.date === t && false);
+      function dot(who, on) { var c = who === 'him' ? 'him' : 'her'; return '<i class="dot ' + c + (on ? ' on' : '') + (!rest && (on || past) ? '' : ' hid') + '"></i>'; }
+      cells += '<button class="wk-cell' + (rest ? ' rest' : '') + (d.date === t ? ' today' : '') + (d.date === wkDate() ? ' sel' : '') + '" data-act="wk-pick" data-v="' + d.date + '" aria-label="' + U.dayLabel(d.date) + ' ' + esc(d.name) + '"><b>' + d.n + '</b><span>' + (rest ? '–' : d.code) + '</span><span class="dots">' + dot('him', h) + dot('her', r) + '</span></button>';
+    });
+    var hs = wkStats('him'), rs = wkStats('her');
+    return '<section class="wk-cal"><div class="wk-dow">' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(function (x) { return '<span>' + x + '</span>'; }).join('') + '</div><div class="wk-grid">' + cells + '</div></section>' +
+      '<div class="chips wk-legend"><span><i class="dot him on"></i> Him done</span><span><i class="dot her on"></i> Her done</span><span><i class="dot him"></i><i class="dot her"></i> Missed</span></div>' +
+      '<p class="note">A, B strength · C, D stamina · R recovery · S Saturday partner day · T test day</p>' +
+      '<div class="grid2"><div class="wk-stat card"><span class="lab" style="color:var(--him)">HIM</span><b>' + hs.done + ' / ' + hs.due + '</b><span class="s">Streak: ' + hs.streak + ' session' + (hs.streak === 1 ? '' : 's') + '</span></div>' +
+      '<div class="wk-stat card"><span class="lab" style="color:var(--her)">HER</span><b>' + rs.done + ' / ' + rs.due + '</b><span class="s">Streak: ' + rs.streak + ' session' + (rs.streak === 1 ? '' : 's') + '</span></div></div>';
+  }
+  function wkTests() {
+    var who = ui.sp.who, t = today(), base = items['wt-base'], re = items['wt-re'];
+    var canBase = t >= W.START, canRe = t >= W.END;
+    function val(rec, id) { return rec && rec[who] && rec[who][id] != null ? rec[who][id] : ''; }
+    function sw(w, label) { return '<button data-act="wk-who" data-v="' + w + '" class="' + (who === w ? 'on ' + w : w) + '">' + label + '</button>'; }
+    var cards = W.tests.map(function (x) {
+      var b = val(base, x.id), r = val(re, x.id), df = W.diff(x.type, b, r);
+      return '<div class="card wk-test"><div><b>' + esc(x.name) + '</b><span class="s">' + esc(x.how) + '</span></div><div class="grid2">' +
+        '<label class="wk-box"><span class="lab">NOV 1</span>' + (canBase ? '<input class="in" data-wt="base" data-id="' + x.id + '" inputmode="' + (x.type === 'time' ? 'text' : 'numeric') + '" placeholder="' + (x.type === 'time' ? '0:45' : '0') + '" value="' + esc(b) + '" aria-label="' + esc(x.name) + ' on Nov 1">' : '<span class="lock">' + IC.lock + 'Opens Nov 1</span>') + '<span class="s">' + x.unit + '</span></label>' +
+        '<label class="wk-box dashed"><span class="lab">NOV 30</span>' + (canRe ? '<input class="in" data-wt="re" data-id="' + x.id + '" inputmode="' + (x.type === 'time' ? 'text' : 'numeric') + '" placeholder="' + (x.type === 'time' ? '0:45' : '0') + '" value="' + esc(r) + '" aria-label="' + esc(x.name) + ' on Nov 30">' : '<span class="lock">' + IC.lock + 'Opens Nov 30</span>') + '<span class="s">' + x.unit + ' <b class="wk-diff" id="wd-' + x.id + '">' + (df ? '(' + df + ')' : '') + '</b></span></label></div></div>';
+    }).join('');
+    return '<section class="seg">' + sw('him', 'Him') + sw('her', 'Her') + '</section>' + cards +
+      '<p class="note">Test both days at the same time, with the same loads and the same sofa or table height. On Nov 30 the difference shows next to each Nov 1 result.</p>';
+  }
+  function wkMoveSheet(code, idx) {
+    var d = W.day(wkDate()), moves = W.moves[code], m = moves[idx]; if (!m) { closeSheet(); return; }
+    var wk = Math.min(Math.max(d.week, 1), 4), key = d.date + ':' + code + ':' + idx, sets = ui.sp.sets[key] || (ui.sp.sets[key] = []), n = W.sets(wk);
+    var setBtns = ''; for (var i = 0; i < n; i++) setBtns += '<button class="wk-set' + (sets[i] ? ' on' : '') + '" data-act="wk-set" data-v="' + key + '|' + i + '|' + code + ':' + idx + '">Set ' + (i + 1) + '</button>';
+    var nextAct = idx + 1 < moves.length ? '<button class="btn" data-act="wk-move" data-v="' + code + ':' + (idx + 1) + '">Next move</button>' : '<button class="btn" data-act="wk-warm" data-v="cool">Cool-down</button>';
+    openSheet('<span class="lab" style="color:var(--primary);font-size:12px;font-weight:700;letter-spacing:.1em">MOVE ' + (idx + 1) + ' OF ' + moves.length + '</span><h2>' + esc(m.name) + '</h2>' +
+      '<div class="wk-dose">' + W.dose(m, wk) + '</div><div class="s" style="color:var(--muted)">' + esc(m.unit) + '</div>' +
+      '<div class="grid2"><div class="wk-stat card"><span class="lab" style="color:var(--him)">HIM</span><span>' + esc(m.him) + '</span></div><div class="wk-stat card"><span class="lab" style="color:var(--her)">HER</span><span>' + esc(m.her) + '</span></div></div>' +
+      '<h2 class="sec">How</h2><ol class="wk-steps">' + m.steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol><p class="note">Why: ' + esc(m.why) + '</p>' +
+      '<h2 class="sec">Sets</h2><div class="wk-sets">' + setBtns + '</div><button class="btn light" id="wk-rest" data-act="wk-rest" data-v="' + W.rest(wk) + '">Start ' + W.rest(wk) + ' s rest</button>' +
+      '<div class="actions"><button class="btn ghost" data-act="sheet-close">Close</button>' + nextAct + '</div>');
+  }
+  function wkListSheet(kind) {
+    var d = W.day(wkDate()), cool = kind === 'cool', arr = cool ? W.cooldown : W.warmup;
+    var next = cool ? '<button class="btn" data-act="sheet-close">Finish</button>' : (W.moves[d.code] ? '<button class="btn" data-act="wk-move" data-v="' + d.code + ':0">Start moves</button>' : '<button class="btn" data-act="sheet-close">Done</button>');
+    openSheet('<h2>' + (cool ? 'Cool-down' : 'Warm-up') + '</h2><div class="stack">' + arr.map(function (m) {
+      return '<div class="row"><span class="wk-n" style="width:auto;font-size:13px">' + m.len + '</span><span class="grow"><span class="t">' + esc(m.name) + '</span><span class="s">' + esc(m.cue) + '</span></span></div>';
+    }).join('') + '</div><div class="actions"><button class="btn ghost" data-act="sheet-close">Close</button>' + next + '</div>');
+  }
+  function wkTick() {
+    var b = $('#wk-rest');
+    if (!b || !ui.sp.restEnd) return;
+    var left = Math.ceil((ui.sp.restEnd - Date.now()) / 1000);
+    if (left > 0) b.textContent = 'Resting · ' + left + ' s';
+    else { ui.sp.restEnd = 0; b.textContent = 'Rest over. Next set'; showBanner({ title: 'Rest over', body: 'Next set' }); }
+  }
+  setInterval(wkTick, 1000);
+
   /* ---------- shell and navigation ---------- */
-  var TABS = [['calendar', 'Calendar', IC.cal], ['groceries', 'Groceries', IC.cart], ['money', 'Money', IC.wallet], ['todo', 'To-do', IC.list]];
+  var TABS = [['calendar', 'Calendar', IC.cal], ['groceries', 'Groceries', IC.cart], ['money', 'Money', IC.wallet], ['todo', 'To-do', IC.list], ['special', 'Special', IC.star]];
   function shellHtml() {
     return '<div class="shell"><header class="top"><button class="brand" id="brandBtn" data-act="menu" aria-haspopup="true" aria-expanded="false" aria-label="DS Family menu">' +
       '<span class="logo">DS</span><span class="brand-name">DS Family</span><span class="caret">' + IC.caret + '</span></button>' +
@@ -339,7 +500,7 @@
     var m = $('#main');
     if (!m || !profile) return;
     var scroll = m.scrollTop;
-    m.innerHTML = prefs.tab === 'groceries' ? viewGroceries() : prefs.tab === 'money' ? viewMoney() : prefs.tab === 'todo' ? viewTodo() : viewCalendar();
+    m.innerHTML = prefs.tab === 'groceries' ? viewGroceries() : prefs.tab === 'money' ? viewMoney() : prefs.tab === 'todo' ? viewTodo() : prefs.tab === 'special' ? viewSpecial() : viewCalendar();
     m.scrollTop = scroll;
     m.className = 'tab-' + prefs.tab;
     Array.prototype.forEach.call(document.querySelectorAll('nav.tabs button, nav.topnav button'), function (b) {
@@ -556,7 +717,7 @@
       var s = t.remindAt ? U.localDateTime(t.remindAt) : null;
       if (s && !t.done) out.push({ key: 't:' + t.id + ':' + t.remindAt, at: s.getTime(), title: t.title, body: 'Task for ' + (t.owner || 'Both') + (t.follow ? ' · follow up' : '') });
     });
-    return out;
+    return out.concat(wkReminders());
   }
   function showBanner(r) {
     var t = $('#toast'); if (!t) return;
@@ -580,7 +741,7 @@
     try { window.DSAndroid.setReminders(JSON.stringify(arr)); } catch (e) { /* bridge not ready */ }
     try {                                                   // lets the phone check for your partner's changes while the app is closed
       var fb = window.DS_CONFIG && window.DS_CONFIG.firebase;
-      if (fb && fb.projectId && window.DSAndroid.setFamily) window.DSAndroid.setFamily(JSON.stringify({ code: profile.code, project: fb.projectId, key: fb.apiKey, me: myName() }));
+      if (fb && fb.projectId && window.DSAndroid.setFamily) window.DSAndroid.setFamily(JSON.stringify({ code: profile.code, project: fb.projectId, key: fb.apiKey, me: myName(), wk: prefs.wkRemind !== false }));
     } catch (e) { /* older app build */ }
   }
   function partnerNote(r, isNew) {                          // tells you when your partner adds or changes something
@@ -617,7 +778,7 @@
     if (!profile) return;
     var now = Date.now(), changed = false;
     dueReminders().forEach(function (r) {
-      if (r.at <= now && r.at > now - 86400000 && !fired[r.key]) { fired[r.key] = now; changed = true; notify(r); }
+      if (r.at <= now && r.at > now - (r.key.indexOf('w:') === 0 ? 10800000 : 86400000) && !fired[r.key]) { fired[r.key] = now; changed = true; notify(r); }
     });
     if (changed) {
       Object.keys(fired).forEach(function (k) { if (fired[k] < now - 14 * 86400000) delete fired[k]; });
@@ -661,6 +822,21 @@
       case 'sheet-bg': if (ev.target === el) closeSheet(); break;
       case 'toast-close': $('#toast').className = 'toast'; break;
       case 'tab': prefs.tab = v; ui.reveal = false; savePrefs(); renderMain(); $('#main').scrollTop = 0; break;
+
+      case 'sp-open': ui.sp.view = 'wk'; ui.sp.tab = 'today'; ui.sp.date = null; renderMain(); $('#main').scrollTop = 0; break;
+      case 'sp-back': ui.sp.view = 'list'; renderMain(); $('#main').scrollTop = 0; break;
+      case 'sp-tab': ui.sp.tab = v; renderMain(); $('#main').scrollTop = 0; break;
+      case 'wk-who': ui.sp.who = v; renderMain(); break;
+      case 'wk-pick': ui.sp.date = v; ui.sp.tab = 'today'; renderMain(); $('#main').scrollTop = 0; break;
+      case 'wk-remind': prefs.wkRemind = prefs.wkRemind === false; savePrefs(); queueNative(); renderMain(); break;
+      case 'wk-done': {
+        var wr = items['wk-' + id] || { id: 'wk-' + id, type: 'wk', date: id, him: false, her: false };
+        wr[v] = !wr[v]; wr.by = myName(); put(wr); queueNative(); break;
+      }
+      case 'wk-warm': wkListSheet(v === 'cool' ? 'cool' : 'warm'); break;
+      case 'wk-move': { var mp = v.split(':'); wkMoveSheet(mp[0], +mp[1]); break; }
+      case 'wk-set': { var sp = v.split('|'), arr = ui.sp.sets[sp[0]] || (ui.sp.sets[sp[0]] = []); arr[+sp[1]] = !arr[+sp[1]]; var cp = sp[2].split(':'); wkMoveSheet(cp[0], +cp[1]); break; }
+      case 'wk-rest': ui.sp.restEnd = Date.now() + (+v) * 1000; wkTick(); break;
 
       case 'ev-add': openEvent(); break;
       case 'ev-edit': openEvent(id); break;
@@ -765,6 +941,15 @@
     }
   });
   document.addEventListener('change', function (ev) {
+    var wt = ev.target && ev.target.getAttribute && ev.target.getAttribute('data-wt');
+    if (wt) {
+      var rid = 'wt-' + wt, tid = ev.target.getAttribute('data-id'), who = ui.sp.who;
+      var rec = items[rid] || { id: rid, type: 'wt', set: wt };
+      rec[who] = Object.assign({}, rec[who]); rec[who][tid] = ev.target.value.trim(); rec.by = myName(); put(rec, true);
+      var tdef = W.tests.filter(function (x) { return x.id === tid; })[0], dEl = $('#wd-' + tid);
+      if (dEl && tdef) { var df = W.diff(tdef.type, (items['wt-base'] && items['wt-base'][who] || {})[tid], (items['wt-re'] && items['wt-re'][who] || {})[tid]); dEl.textContent = df ? '(' + df + ')' : ''; }
+      return;
+    }
     var el = ev.target, c = el.getAttribute && el.getAttribute('data-chg');
     if (c === 'cal-month') { ui.calMonth = new Date(ui.calMonth.getFullYear(), +el.value, 1); renderMain(); return; }
     if (c === 'cal-year') { ui.calMonth = new Date(+el.value, ui.calMonth.getMonth(), 1); renderMain(); return; }
@@ -795,7 +980,7 @@
   syncNative();
   setInterval(function () {
     checkReminders();
-    if (profile && prefs.tab === 'calendar' && !sheetOpen() && !document.hidden) renderMain();
+    if (profile && (prefs.tab === 'calendar' || prefs.tab === 'special') && !sheetOpen() && !document.hidden) renderMain();
   }, 30000);
   document.addEventListener('visibilitychange', function () { if (document.hidden) { ui.reveal = false; } if (!document.hidden) { checkReminders(); if (!sheetOpen()) renderMain(); } });
   if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(function () { }); }

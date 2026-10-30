@@ -1,6 +1,6 @@
 /* DS Family service worker: keeps the app opening offline and shows reminder notifications. */
-var CACHE = 'ds-family-v0.3.2';
-var SHELL = ['./', 'index.html', 'styles.css', 'util.js', 'app.js', 'config.js', 'manifest.webmanifest',
+var CACHE = 'ds-family-v0.4.0';
+var SHELL = ['./', 'index.html', 'styles.css', 'util.js', 'workout.js', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'];
 
 self.addEventListener('install', function (e) {
