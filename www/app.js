@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   var U = window.DS;
-  var VERSION = '0.3.1';
+  var VERSION = '0.3.2';
 
   /* ---------- tiny helpers ---------- */
   function $(s, r) { return (r || document).querySelector(s); }
@@ -430,8 +430,7 @@
       fld('s-open', 'Opening balance (shared)', inp('s-open', 'text', meta().openBal ? 'Rp ' + U.group(meta().openBal) : '', 'inputmode="numeric" data-in="f-amt" placeholder="Rp 0"')) +
       fld('s-code', 'Login code', '<div class="codebox"><input id="s-code" class="in" type="password" readonly value="' + esc(profile.code) + '"><button class="btn ghost" data-act="copy-code">Copy</button></div>') +
       '<div class="kv"><span>Reminders</span><span>' + notifState() + '</span></div>' +
-      '<div class="actions"><button class="btn ghost" data-act="enable-notif">Allow notifications</button><button class="btn danger" data-act="leave">Leave family</button></div>' +
-      '<div class="actions"><button class="btn ghost" data-act="test-notif">Send a test notification</button></div>' +
+      '<div class="actions"><button class="btn ghost" data-act="enable-notif">Allow notifications</button><button class="btn ghost" data-act="test-notif">Send a test notification</button></div>' +
       '<div class="actions"><button class="btn ghost" data-act="sheet-close">Cancel</button><button class="btn" data-act="settings-save">Save</button></div>');
   }
 
