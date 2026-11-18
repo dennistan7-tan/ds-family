@@ -5,7 +5,7 @@
    and families/fdimg-<diary code> (sticker pictures).
    Set "firebase" to null to keep everything on this phone only (shows LOCAL). */
 window.FD_CONFIG = {
-  version: '0.1.1',
+  version: '0.1.2',
   firebase: {
     apiKey: "AIzaSyB5W49ezBvVWbWPRaonMdFcS4nVFQPJy1M",
     authDomain: "ds-family-42ff8.firebaseapp.com",

@@ -4,7 +4,7 @@
 'use strict';
 
 var CFG = window.FD_CONFIG || {};
-var VERSION = CFG.version || '0.1.1';
+var VERSION = CFG.version || '0.1.2';
 var NATIVE = window.FDNative || null;
 try { if (NATIVE && NATIVE.version) VERSION = NATIVE.version() || VERSION; } catch (e) {}
 var $app = document.getElementById('app');
@@ -661,7 +661,7 @@ function openSettings() {
         '<div class="s" style="display:flex;align-items:center;gap:8px">' + ic('sync', 16, GREY) + st + '</div>' +
         '<button class="btn2" data-act="syncnow" style="flex:none">' + ic('sync', 18, INK) + 'Sync now</button></div>' +
         '<div class="card"><div class="t">App</div><div class="s">FoodDiary v' + VERSION + '</div>' +
-        (NATIVE && NATIVE.checkUpdate ? '<button class="btn2" data-act="checkupdate" style="flex:none">' + ic('sync', 18, INK) + 'Check for update</button>'
+        (NATIVE && NATIVE.checkUpdate ? '<div class="s">Updates download and install by themselves.</div><button class="btn2" data-act="checkupdate" style="flex:none">' + ic('sync', 18, INK) + 'Check for update</button>'
           : '<a class="btn2" style="flex:none;text-decoration:none;color:#14161F" href="FoodDiary.apk" download>' + ic('image', 18, INK) + 'Get the Android app</a>') + '</div>' +
         '<button class="btn1" style="flex:none" data-act="savesettings">Save</button>' +
         '<div class="ver">FoodDiary v' + VERSION + ' · ' + plural(SAVES.length, 'save') + ' on this phone</div></div></div></div>';
@@ -871,36 +871,57 @@ function openBigMap() {
   });
 }
 
-/* ---------------- App update (Android) ---------------- */
-var Upd = { manual: false, info: null, pct: -1, error: '', shown: false };
-window.FD_onUpdate = function (json) {
+/* ---------------- App update (Android, automatic) ----------------
+   The app checks the website by itself, downloads new versions in the background and installs them.
+   Native sends FD_onUpdateProgress with: state downloading | silent | ready | permission | installing, pct, or error. */
+var Upd = { manual: false, info: null, state: '', pct: -1, error: '' };
+window.FD_onUpdate = function (json) {          // answer to a manual check when there is nothing new / no connection
   var r; try { r = JSON.parse(json); } catch (e) { r = { ok: false }; }
   var manual = Upd.manual; Upd.manual = false;
-  if (!r.ok) { if (manual) toast('Could not check for updates. Are you online?'); return; }
-  if (!r.available) { if (manual) toast('You have the latest version (v' + VERSION + ')'); return; }
-  Upd.info = r; Upd.pct = -1; Upd.error = '';
-  if (Upd.shown && !manual) return;
-  Upd.shown = true;
-  if (!S) return;
-  pushOv({ upd: true, html: updateHtml, refresh: paintOv });
+  if (!manual) return;
+  if (!r.ok) toast('Could not check for updates. Are you online?');
+  else if (!r.available) toast('You have the latest version (v' + VERSION + ')');
 };
 window.FD_onUpdateProgress = function (json) {
   var r; try { r = JSON.parse(json); } catch (e) { r = {}; }
+  if (r.versionName) Upd.info = { versionName: r.versionName, notes: r.notes };
   if (r.error) { Upd.error = r.error; Upd.pct = -1; }
-  else if (r.pct != null) { Upd.pct = r.pct; Upd.error = ''; }
-  else if (r.installing) { Upd.pct = 100; }
-  var top = UI.stack[UI.stack.length - 1];
-  if (top && top.upd) paintOv();
+  if (r.pct != null) { Upd.pct = r.pct; Upd.error = ''; if (!Upd.state) Upd.state = 'downloading'; }
+  if (r.state) { Upd.state = r.state; if (r.state !== 'downloading') Upd.pct = -1; Upd.error = ''; }
+  var top = UI.stack[UI.stack.length - 1], open = top && top.upd;
+  if (Upd.state === 'silent') {
+    Upd.manual = false;
+    if (open) popOv();
+    toast('Update v' + (Upd.info && Upd.info.versionName) + ' downloaded. It installs by itself when you leave FoodDiary.');
+    return;
+  }
+  var wantSheet = Upd.state === 'ready' || Upd.state === 'permission' || ((Upd.state === 'downloading' || Upd.error) && Upd.manual);
+  if (open) paintOv();
+  else if (wantSheet && S) pushOv({ upd: true, html: updateHtml, refresh: paintOv, close: function () { Upd.manual = false; } });
 };
 function updateHtml() {
-  var i = Upd.info || {}, busy = Upd.pct >= 0;
+  var i = Upd.info || {}, st = Upd.state, t, sub, btn = '', body = '';
+  if (st === 'permission') { t = 'Update ready'; sub = 'Allow FoodDiary to install its updates (only once). After that, updates install by themselves.'; btn = 'Allow and install'; }
+  else if (st === 'ready') { t = 'Update ready'; sub = 'Downloaded. One tap to install.'; btn = 'Install now'; }
+  else if (st === 'installing') { t = 'Installing…'; sub = 'Follow the Android installer.'; }
+  else { t = 'Downloading update'; sub = Upd.pct >= 0 ? Upd.pct + '%' : 'Starting…'; }
+  if (st === 'downloading' || st === '') body = '<div class="bar" style="margin:6px 0"><div style="width:' + Math.max(0, Upd.pct) + '%;background:#1E3FAE"></div></div>';
   return '<div class="sheetbg" data-act="back"><div class="sheet" data-stop="1"><div class="grab"></div>' +
-    '<div style="display:flex;align-items:center;gap:12px">' + LOGO + '<div><h3 style="margin:0">Update available</h3><div style="font-size:13px;color:#5B6275">FoodDiary v' + esc(i.versionName) + ' · you have v' + esc(VERSION) + '</div></div></div>' +
-    (i.notes ? '<div style="font-size:14px;line-height:20px;white-space:pre-wrap;padding:4px 0">' + esc(i.notes) + '</div>' : '') +
-    (busy ? '<div class="bar" style="margin:6px 0"><div style="width:' + Upd.pct + '%;background:#1E3FAE"></div></div><div style="font-size:12px;color:#5B6275">' + (Upd.pct >= 100 ? 'Opening the installer…' : 'Downloading… ' + Upd.pct + '%') + '</div>' : '') +
+    '<div style="display:flex;align-items:center;gap:12px">' + LOGO + '<div><h3 style="margin:0">' + t + '</h3><div style="font-size:13px;color:#5B6275">FoodDiary v' + esc(i.versionName || '') + ' · you have v' + esc(VERSION) + '</div></div></div>' +
+    (i.notes ? '<div style="font-size:14px;line-height:20px;white-space:pre-wrap;padding:4px 0">' + esc(i.notes) + '</div>' : '') + body +
+    '<div style="font-size:12px;color:#5B6275">' + sub + '</div>' +
     (Upd.error ? '<div style="font-size:13px;color:#B42318">' + esc(Upd.error) + '</div>' : '') +
-    '<div class="btns"><button class="btn2" data-act="back">Later</button><button class="btn1" data-act="doupdate"' + (busy && Upd.pct < 100 ? ' disabled' : '') + '>' + (Upd.error ? 'Try again' : 'Update now') + '</button></div></div></div>';
+    '<div class="btns"><button class="btn2" data-act="back">Later</button>' +
+    (btn || Upd.error ? '<button class="btn1" data-act="doupdate">' + (Upd.error ? 'Try again' : btn) + '</button>' : '<button class="btn1" disabled>' + (st === 'installing' ? 'Installing…' : 'Downloading…') + '</button>') +
+    '</div></div></div>';
 }
+(function () {   // "Updated to vX" once after an update
+  try {
+    var last = localStorage.getItem('fd.lastVersion');
+    if (last && last !== VERSION) setTimeout(function () { toast('Updated to v' + VERSION); }, 1200);
+    localStorage.setItem('fd.lastVersion', VERSION);
+  } catch (e) {}
+})();
 
 /* ---------------- Events ---------------- */
 document.addEventListener('click', function (ev) {
@@ -954,7 +975,10 @@ document.addEventListener('click', function (ev) {
       if (oldCode !== S.code) { markAllPending().then(startSync); } else startSync();
       toast('Saved'); break;
     case 'checkupdate': Upd.manual = true; toast('Checking…'); NATIVE.checkUpdate(); break;
-    case 'doupdate': Upd.error = ''; Upd.pct = 0; paintOv(); NATIVE.installUpdate(); break;
+    case 'doupdate':
+      if (Upd.error && Upd.state !== 'ready' && Upd.state !== 'permission') { Upd.error = ''; Upd.manual = true; Upd.state = 'downloading'; Upd.pct = 0; paintOv(); NATIVE.checkUpdate(); }
+      else { Upd.error = ''; NATIVE.installUpdate(); }
+      break;
     case 'syncnow': startSync(); toast(syncEnabled() ? 'Syncing…' : 'Add a diary code to sync'); break;
     case 'start':
       var me = document.getElementById('u-me').value.trim();
@@ -971,7 +995,6 @@ async function markAllPending() {
 /* ---------------- Start ---------------- */
 openDB().then(loadAll).then(function () {
   render(); startSync();
-  if (NATIVE && NATIVE.checkUpdate) setTimeout(function () { NATIVE.checkUpdate(); }, 1500);
 }).catch(function (e) {
   $app.innerHTML = '<div class="setup"><div class="hello">Something went wrong<b>.</b></div><div class="s">' + esc(e && e.message || e) + '</div></div>';
 });

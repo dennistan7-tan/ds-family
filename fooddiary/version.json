@@ -1,8 +1,8 @@
 {
-    "versionCode":  2,
-    "versionName":  "0.1.1",
-    "notes":  "FoodDiary is online: website link, and the app now updates itself (Update pop-up when a new version is published).",
+    "versionCode":  3,
+    "versionName":  "0.1.2",
+    "notes":  "Auto update: new versions download by themselves. After this update, later updates install on their own when you leave the app (Android 12 and newer).",
     "apk":  "FoodDiary.apk",
-    "sha256":  "58af2147aebe96a93ba3a8da2ea4568f6461d8eed2ee2e487f78db8244089adb",
-    "size":  4464812
+    "sha256":  "92dd13bffaad6c40e085cefc9902fe267513786b5da646a75d5bc308f284a10d",
+    "size":  4468228
 }
